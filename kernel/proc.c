@@ -230,6 +230,8 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  p->mask = 0;
+
   release(&p->lock);
 }
 
@@ -276,6 +278,8 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+
+  np->mask = p->mask;
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
