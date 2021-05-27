@@ -34,9 +34,15 @@ void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
+  struct run* r;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
+  r = kmem.freelist;
+  for (int i=0; i < 200; i++){
+    printf("%p ", r);
+    r = r->next;
+  }
 }
 
 // Free the page of physical memory pointed at by v,
