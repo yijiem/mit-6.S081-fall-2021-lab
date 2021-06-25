@@ -56,6 +56,64 @@ kvminithart()
   sfence_vma();
 }
 
+// Switch h/w page table register to the process' kernel page table,
+// and enable paging.
+void
+procinithart(pagetable_t pagetable)
+{
+  w_satp(MAKE_SATP(pagetable));
+  sfence_vma();
+}
+
+// Create a kernel pagetable for a process and return the pointer to the root
+// table. Return 0 if memory alloc failed.
+pagetable_t
+proc_kpagetable()
+{
+  pagetable_t pagetable = (pagetable_t) kalloc();
+  if (pagetable == 0) {
+    return 0;
+  }
+  memset(pagetable, 0, PGSIZE);
+
+  // uart registers
+  if(mappages(pagetable, UART0, PGSIZE, UART0, PTE_R | PTE_W) != 0) {
+    return 0;
+  }
+
+  // virtio mmio disk interface
+  if(mappages(pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W) != 0) {
+    return 0;
+  }
+
+  // CLINT
+  if(mappages(pagetable, CLINT, 0x10000, CLINT, PTE_R | PTE_W) != 0) {
+    return 0;
+  }
+
+  // PLIC
+  if(mappages(pagetable, PLIC, 0x400000, PLIC, PTE_R | PTE_W) != 0) {
+    return 0;
+  }
+
+  // map kernel text executable and read-only.
+  if(mappages(pagetable, KERNBASE, (uint64)etext-KERNBASE, KERNBASE, PTE_R | PTE_X) != 0) {
+    return 0;
+  }
+
+  // map kernel data and the physical RAM we'll make use of.
+  if(mappages(pagetable, (uint64)etext, PHYSTOP-(uint64)etext, (uint64)etext, PTE_R | PTE_W) != 0) {
+    return 0;
+  }
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  if(mappages(pagetable, TRAMPOLINE, PGSIZE, (uint64)trampoline, PTE_R | PTE_X) != 0) {
+    return 0;
+  }
+  return pagetable;
+}
+
 // Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page-table pages.
@@ -126,17 +184,17 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 // addresses on the stack.
 // assumes va is page aligned.
 uint64
-kvmpa(uint64 va)
+kvmpa(uint64 va, pagetable_t pagetable)
 {
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  pte = walk(pagetable, va, 0);
   if(pte == 0)
-    panic("kvmpa");
+    panic("kvmpa 1");
   if((*pte & PTE_V) == 0)
-    panic("kvmpa");
+    panic("kvmpa 2");
   pa = PTE2PA(*pte);
   return pa+off;
 }
@@ -284,6 +342,27 @@ freewalk(pagetable_t pagetable)
       pagetable[i] = 0;
     } else if(pte & PTE_V){
       panic("freewalk: leaf");
+    }
+  }
+  kfree((void*)pagetable);
+}
+
+// Recursively free page-table pages.
+// Preserve leaf mappings, used by freeing process' kernel pagetable.
+void
+proc_freekpagetable(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      proc_freekpagetable((pagetable_t)child);
+      pagetable[i] = 0;
+    } else if(pte & PTE_V){
+      // leaf node, just clear it.
+      pagetable[i] = 0;
     }
   }
   kfree((void*)pagetable);
