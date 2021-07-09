@@ -1,0 +1,7 @@
+srcva+len causes uint64 overflow, especially len is very large
+
+1. srcva >= p->sz will pass since srcva may still be reasonable
+2. srcva+len >= p->sz will pass since it overflows
+
+Thus we need
+3. srcva+len < srcva

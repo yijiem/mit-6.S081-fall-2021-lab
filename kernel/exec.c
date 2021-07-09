@@ -38,6 +38,9 @@ exec(char *path, char **argv)
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
+  // Unmap user memory part of the kpagetable.
+  uvmunmap(p->kpagetable, 0, PGROUNDUP(p->sz)/PGSIZE, /*do_free=*/0);
+
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
@@ -49,7 +52,7 @@ exec(char *path, char **argv)
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
     uint64 sz1;
-    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    if((sz1 = uvmalloc(pagetable, p->kpagetable, sz, ph.vaddr + ph.memsz)) == 0)
       goto bad;
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
@@ -68,7 +71,7 @@ exec(char *path, char **argv)
   // Use the second as the user stack.
   sz = PGROUNDUP(sz);
   uint64 sz1;
-  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+  if((sz1 = uvmalloc(pagetable, p->kpagetable, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
@@ -123,8 +126,13 @@ exec(char *path, char **argv)
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
-  if(pagetable)
+  if(pagetable) {
     proc_freepagetable(pagetable, sz);
+    // Unmap the user mappings that we have already added and copy back original
+    // user mappings.
+    uvmunmap(p->kpagetable, 0, PGROUNDUP(sz)/PGSIZE, /*do_free=*/0);
+    uvmshallowcopy(/*dst=*/p->kpagetable, /*src=*/p->pagetable, p->sz);
+  }
   if(ip){
     iunlockput(ip);
     end_op();
