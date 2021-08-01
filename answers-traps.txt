@@ -1,0 +1,23 @@
+1. Which registers contain arguments to functions? For example, which register holds 13 in main's call to printf?
+a0, a1, a2 holds 13
+
+2. Where is the call to function f in the assembly code for main? Where is the call to g? (Hint: the compiler may inline functions.)
+no call to f, the compiler computes the result 12 directly
+
+3. At what address is the function printf located?
+0x628
+
+4. What value is in the register ra just after the jalr to printf in main?
+0x38
+
+5
+57616 is 0xE110
+0x00646c72 is 11001000110110001110010
+little endian means 01110010 01101100 01100100
+                    114 'r'  108 'l'  100 'd'
+
+6. In the following code, what is going to be printed after 'y='? (note: the answer is not a specific value.) Why does this happen?
+    printf("x=%d y=%d", 3);
+whatever 4 bytes (interpreted as signed int) in the memory pointed to by `va_list ap`. because the `printf` or `vprintf` does not do
+any checking that there exists a valid argument for each format string, and the pointer just moves to the next one and supposed there
+is one. `If va_arg is called when there are no more arguments in ap, the behavior is undefined.`
