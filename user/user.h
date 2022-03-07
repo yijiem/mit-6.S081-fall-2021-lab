@@ -23,6 +23,10 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+// after every 'n' ticks of CPU time that the program consumes, the application
+// will be interrupted and the kernel should cause fn to be called.
+int sigalarm(int n, void (*fn)());
+int sigreturn(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

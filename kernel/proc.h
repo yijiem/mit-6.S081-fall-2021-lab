@@ -18,6 +18,48 @@ struct context {
   uint64 s11;
 };
 
+// saved during timer interrupt when the user's alarm expired and restored when
+// `sigreturn` is called in the user's interrupt handler.
+struct context2 {
+  uint64 ra;
+  uint64 sp;
+  uint64 epc;
+
+  // callee-saved
+  uint64 s0;
+  uint64 s1;
+  uint64 s2;
+  uint64 s3;
+  uint64 s4;
+  uint64 s5;
+  uint64 s6;
+  uint64 s7;
+  uint64 s8;
+  uint64 s9;
+  uint64 s10;
+  uint64 s11;
+
+  uint64 gp;
+  uint64 tp;
+
+  uint64 a0;
+  uint64 a1;
+  uint64 a2;
+  uint64 a3;
+  uint64 a4;
+  uint64 a5;
+  uint64 a6;
+  uint64 a7;
+
+  uint64 t0;
+  uint64 t1;
+  uint64 t2;
+  uint64 t3;
+  uint64 t4;
+  uint64 t5;
+  uint64 t6;
+};
+
 // Per-CPU state.
 struct cpu {
   struct proc *proc;          // The process running on this cpu, or null.
@@ -103,4 +145,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // user-level alarm
+  int ticks;
+  int interval;
+  uint64 handler;  // `handler` can have address 0
+  struct context2 interrupted_context;
+  int in_flight;
 };

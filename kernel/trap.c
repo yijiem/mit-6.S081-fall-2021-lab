@@ -77,8 +77,27 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
     yield();
+    if(p->interval > 0){
+      if(p->ticks >= p->interval){
+        panic("usertrap: ticks >= interval");
+      }
+      if(!p->in_flight){
+        p->ticks++;
+        if(p->ticks == p->interval){
+          // alarm interval expired, we need to return to the user's handler
+          // function. we also need to save user's current context so we can
+          // resume to interrupted code later via `sigreturn`.
+          save_trapframe();
+          p->trapframe->epc = p->handler;
+          p->ticks = 0;
+          p->in_flight = 1;
+        }
+      }
+      // otherwise, we are still inside the user's interrupt handler.
+    }
+  }
 
   usertrapret();
 }
