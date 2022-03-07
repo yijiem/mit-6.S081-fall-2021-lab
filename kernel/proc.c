@@ -127,6 +127,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->ticks = 0;
+  p->interval = 0;
+  p->in_flight = 0;
+
   return p;
 }
 
@@ -150,6 +154,10 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  p->ticks = 0;
+  p->interval = 0;
+  p->in_flight = 0;
 }
 
 // Create a user page table for a given process,
@@ -696,4 +704,100 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+void
+save_helper1(uint64 *l, uint64 r)
+{
+  *l = r;
+}
+
+void
+save_helper2(uint64 l, uint64 *r)
+{
+  *r = l;
+}
+
+void
+save_trapframe(void)
+{
+  struct proc *p = myproc();
+  save_helper1(&p->interrupted_context.ra, p->trapframe->ra);
+  save_helper1(&p->interrupted_context.sp, p->trapframe->sp);
+  save_helper1(&p->interrupted_context.epc, p->trapframe->epc);
+
+  save_helper1(&p->interrupted_context.s0, p->trapframe->s0);
+  save_helper1(&p->interrupted_context.s1, p->trapframe->s1);
+  save_helper1(&p->interrupted_context.s2, p->trapframe->s2);
+  save_helper1(&p->interrupted_context.s3, p->trapframe->s3);
+  save_helper1(&p->interrupted_context.s4, p->trapframe->s4);
+  save_helper1(&p->interrupted_context.s5, p->trapframe->s5);
+  save_helper1(&p->interrupted_context.s6, p->trapframe->s6);
+  save_helper1(&p->interrupted_context.s7, p->trapframe->s7);
+  save_helper1(&p->interrupted_context.s8, p->trapframe->s8);
+  save_helper1(&p->interrupted_context.s9, p->trapframe->s9);
+  save_helper1(&p->interrupted_context.s10, p->trapframe->s10);
+  save_helper1(&p->interrupted_context.s11, p->trapframe->s11);
+
+  save_helper1(&p->interrupted_context.gp, p->trapframe->gp);
+  save_helper1(&p->interrupted_context.tp, p->trapframe->tp);
+
+  save_helper1(&p->interrupted_context.a0, p->trapframe->a0);
+  save_helper1(&p->interrupted_context.a1, p->trapframe->a1);
+  save_helper1(&p->interrupted_context.a2, p->trapframe->a2);
+  save_helper1(&p->interrupted_context.a3, p->trapframe->a3);
+  save_helper1(&p->interrupted_context.a4, p->trapframe->a4);
+  save_helper1(&p->interrupted_context.a5, p->trapframe->a5);
+  save_helper1(&p->interrupted_context.a6, p->trapframe->a6);
+  save_helper1(&p->interrupted_context.a7, p->trapframe->a7);
+
+  save_helper1(&p->interrupted_context.t0, p->trapframe->t0);
+  save_helper1(&p->interrupted_context.t1, p->trapframe->t1);
+  save_helper1(&p->interrupted_context.t2, p->trapframe->t2);
+  save_helper1(&p->interrupted_context.t3, p->trapframe->t3);
+  save_helper1(&p->interrupted_context.t4, p->trapframe->t4);
+  save_helper1(&p->interrupted_context.t5, p->trapframe->t5);
+  save_helper1(&p->interrupted_context.t6, p->trapframe->t6);
+}
+
+void
+restore_trapframe(void)
+{
+  struct proc *p = myproc();
+  save_helper2(p->interrupted_context.ra, &p->trapframe->ra);
+  save_helper2(p->interrupted_context.sp, &p->trapframe->sp);
+  save_helper2(p->interrupted_context.epc, &p->trapframe->epc);
+
+  save_helper2(p->interrupted_context.s0, &p->trapframe->s0);
+  save_helper2(p->interrupted_context.s1, &p->trapframe->s1);
+  save_helper2(p->interrupted_context.s2, &p->trapframe->s2);
+  save_helper2(p->interrupted_context.s3, &p->trapframe->s3);
+  save_helper2(p->interrupted_context.s4, &p->trapframe->s4);
+  save_helper2(p->interrupted_context.s5, &p->trapframe->s5);
+  save_helper2(p->interrupted_context.s6, &p->trapframe->s6);
+  save_helper2(p->interrupted_context.s7, &p->trapframe->s7);
+  save_helper2(p->interrupted_context.s8, &p->trapframe->s8);
+  save_helper2(p->interrupted_context.s9, &p->trapframe->s9);
+  save_helper2(p->interrupted_context.s10, &p->trapframe->s10);
+  save_helper2(p->interrupted_context.s11, &p->trapframe->s11);
+
+  save_helper2(p->interrupted_context.gp, &p->trapframe->gp);
+  save_helper2(p->interrupted_context.tp, &p->trapframe->tp);
+
+  save_helper2(p->interrupted_context.a0, &p->trapframe->a0);
+  save_helper2(p->interrupted_context.a1, &p->trapframe->a1);
+  save_helper2(p->interrupted_context.a2, &p->trapframe->a2);
+  save_helper2(p->interrupted_context.a3, &p->trapframe->a3);
+  save_helper2(p->interrupted_context.a4, &p->trapframe->a4);
+  save_helper2(p->interrupted_context.a5, &p->trapframe->a5);
+  save_helper2(p->interrupted_context.a6, &p->trapframe->a6);
+  save_helper2(p->interrupted_context.a7, &p->trapframe->a7);
+
+  save_helper2(p->interrupted_context.t0, &p->trapframe->t0);
+  save_helper2(p->interrupted_context.t1, &p->trapframe->t1);
+  save_helper2(p->interrupted_context.t2, &p->trapframe->t2);
+  save_helper2(p->interrupted_context.t3, &p->trapframe->t3);
+  save_helper2(p->interrupted_context.t4, &p->trapframe->t4);
+  save_helper2(p->interrupted_context.t5, &p->trapframe->t5);
+  save_helper2(p->interrupted_context.t6, &p->trapframe->t6);
 }
