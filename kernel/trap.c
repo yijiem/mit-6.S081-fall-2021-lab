@@ -68,11 +68,36 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
+    uint64 scause = r_scause();
+    // 12: instruction page fault
+    // 13: load page fault
+    // 15: store page fault
+    if(scause == 12 || scause == 13 || scause == 15){
+      // printf("handling page fault\n");
+      // the faulting virtual address
+      uint64 stval = r_stval();
+      // printf("trap:uvmiscow\n");
+      if(uvmiscow(p->pagetable, stval)){
+        // printf("yes\n");
+        // if it's a COW page, then we will fix it
+        // printf("trap:uvmcowfix\n");
+        if(uvmcowfix(p->pagetable, stval)){
+          // printf("yes\n");
+          // bail out on success
+          goto out;
+        }
+        // printf("no\n");
+      }
+      // printf("no\n");
+    }
+    // Otherwise fall through
+
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
 
+ out:
   if(p->killed)
     exit(-1);
 

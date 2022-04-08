@@ -327,6 +327,108 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+// Copy-on-write replacement for uvmcopy
+// map physical pages from old to new
+// pte should not be writable
+// use RSW bit to indicate the pte is a COW mapping
+int
+uvmcopycow(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      panic("uvmcopy: page not present");
+    pa = PTE2PA(*pte);
+    // clear write bit
+    *pte &= ~PTE_W;
+    // add COW bit
+    *pte |= PTE_COW;
+    flags = PTE_FLAGS(*pte);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      goto err;
+    }
+    increase_ref((void*)pa);
+  }
+  return 0;
+
+ err:
+  // TODO: possibly decrease_ref here
+  uvmunmap(new, 0, i / PGSIZE, /*do_free=*/0);
+  return -1;
+}
+
+// return 1 if this va has a COW mapping
+// va may not be page-aligned
+int
+uvmiscow(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+
+  if(va >= MAXVA){
+    return 0;
+  }
+
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+  if((*pte & PTE_COW) == 0)
+    return 0;
+  return 1;
+}
+
+int
+uvmcowfix(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+  char *mem;
+  int ref;
+
+  pte = walk(pagetable, va, 0);
+  // assertions
+  if(pte == 0)
+    panic("uvmcowfix");
+  if((*pte & PTE_V) == 0)
+    panic("uvmcowfix");
+  if((*pte & PTE_U) == 0)
+    panic("uvmcowfix");
+  if((*pte & PTE_COW) == 0)
+    panic("uvmcowfix");
+
+  pa = PTE2PA(*pte);
+  ref = getref((void*)pa);
+  if(ref <= 0)
+    panic("uvmcowfix");
+
+  if(ref == 1){
+    // add write bit
+    *pte |= PTE_W;
+    // clear COW bit
+    *pte &= ~PTE_COW;
+  } else {
+    // allocate a new page
+    // copy the old page to the new page
+    // install the new page to the pte
+    mem = kalloc();
+    if(mem == 0){
+      return 0;
+    }
+    memmove(mem, (char*)pa, PGSIZE);
+    *pte = PA2PTE(mem) | PTE_W|PTE_X|PTE_R|PTE_U | PTE_V;
+    decrease_ref((void*)pa);
+  }
+  return 1;
+}
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void

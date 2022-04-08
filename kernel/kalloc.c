@@ -23,11 +23,22 @@ struct {
   struct run *freelist;
 } kmem;
 
+// 128*1024*1024 / 4096 = 32768
+int refcounts[32768];
+#define INDEX(a) ((PGROUNDDOWN((uint64)a)-PGROUNDUP((uint64)end))/PGSIZE)
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  printf("initialize refcounts\n");
+  // initialize to 1 since kfree in freerange will decrease them back to 0
+  for(int i = 0; i < 32768; i++)
+    refcounts[i] = 1;
+  printf("done\n");
+  printf("freerange\n");
   freerange(end, (void*)PHYSTOP);
+  printf("done\n");
 }
 
 void
@@ -35,8 +46,10 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
+  printf("p: %p refcounts: %p\n", p, refcounts);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
+  printf("p: %p\n", p);
 }
 
 // Free the page of physical memory pointed at by v,
@@ -50,6 +63,18 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  acquire(&kmem.lock);
+  if(refcounts[INDEX(pa)] <= 0)
+    panic("kfree");
+
+  refcounts[INDEX(pa)]--;
+  if(refcounts[INDEX(pa)] > 0){
+    release(&kmem.lock);
+    return;
+  }
+  // only free when refcount drops to 0
+  release(&kmem.lock);
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -72,11 +97,53 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+    refcounts[INDEX(r)] = 1;
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+void
+increase_ref(void *pa)
+{
+  if((char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("increase_ref");
+
+  acquire(&kmem.lock);
+  if(refcounts[INDEX(pa)] <= 0)
+    panic("increase_ref");
+
+  refcounts[INDEX(pa)]++;
+  release(&kmem.lock);
+}
+
+void
+decrease_ref(void *pa)
+{
+  if((char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("decrease_ref");
+
+  acquire(&kmem.lock);
+  if(refcounts[INDEX(pa)] <= 1)
+    panic("decrease_ref");
+
+  refcounts[INDEX(pa)]--;
+  release(&kmem.lock);
+}
+
+int
+getref(void *pa)
+{
+  if((char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("getref");
+
+  acquire(&kmem.lock);
+  int ref = refcounts[INDEX(pa)];
+  release(&kmem.lock);
+  return ref;
 }
