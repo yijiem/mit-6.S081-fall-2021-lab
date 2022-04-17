@@ -412,6 +412,9 @@ uvmcowfix(pagetable_t pagetable, uint64 va)
     // install the new page to the pte
     mem = kalloc();
     if(mem == 0){
+      // OOM, we will kill the process. But put the ref back now since we
+      // didn't fix it. Later the ref will be decreased again when we reap it.
+      increase_ref((void*)pa);
       return 0;
     }
     memmove(mem, (char*)pa, PGSIZE);

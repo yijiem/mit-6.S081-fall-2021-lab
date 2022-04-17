@@ -2681,11 +2681,6 @@ execout(char *s)
       printf("fork failed\n");
       exit(1);
     } else if(pid == 0){
-      // Move this here since this is the first place the compiler uses a store
-      // instruction to the stack. If we do this after allocating all of memory,
-      // then the COW code will fail to handle the page fault since allocating
-      // a new page will fail.
-      char *args[] = { "echo", "x", 0 };
       // allocate all of memory.
       while(1){
         uint64 a = (uint64) sbrk(4096);
@@ -2700,6 +2695,7 @@ execout(char *s)
         sbrk(-4096);
       
       close(1);
+      char *args[] = { "echo", "x", 0 };
       exec("echo", args);
       exit(0);
     } else {
