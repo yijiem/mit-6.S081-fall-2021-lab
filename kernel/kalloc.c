@@ -122,28 +122,19 @@ increase_ref(void *pa)
   release(&kmem.lock);
 }
 
-void
-decrease_ref(void *pa)
+int
+try_decrease_ref(void *pa)
 {
   if((char*)pa < end || (uint64)pa >= PHYSTOP)
-    panic("decrease_ref");
+    panic("try_decrease_ref");
 
   acquire(&kmem.lock);
-  if(refcounts[INDEX(pa)] <= 1)
-    panic("decrease_ref");
+  if(refcounts[INDEX(pa)] <= 1){
+    release(&kmem.lock);
+    return 0;
+  }
 
   refcounts[INDEX(pa)]--;
   release(&kmem.lock);
-}
-
-int
-getref(void *pa)
-{
-  if((char*)pa < end || (uint64)pa >= PHYSTOP)
-    panic("getref");
-
-  acquire(&kmem.lock);
-  int ref = refcounts[INDEX(pa)];
-  release(&kmem.lock);
-  return ref;
+  return 1;
 }

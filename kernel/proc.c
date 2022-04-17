@@ -284,13 +284,11 @@ fork(void)
   // Copy user memory from parent to child.
   // if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
   // Use copy-on-write variant
-  printf("proc:uvmcopycow\n");
   if(uvmcopycow(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
-  printf("proc:done\n");
   np->sz = p->sz;
 
   // copy saved user registers.

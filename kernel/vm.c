@@ -391,7 +391,7 @@ uvmcowfix(pagetable_t pagetable, uint64 va)
   pte_t *pte;
   uint64 pa;
   char *mem;
-  int ref;
+  int did_decrease;
 
   pte = walk(pagetable, va, 0);
   // assertions
@@ -405,16 +405,8 @@ uvmcowfix(pagetable_t pagetable, uint64 va)
     panic("uvmcowfix");
 
   pa = PTE2PA(*pte);
-  ref = getref((void*)pa);
-  if(ref <= 0)
-    panic("uvmcowfix");
-
-  if(ref == 1){
-    // add write bit
-    *pte |= PTE_W;
-    // clear COW bit
-    *pte &= ~PTE_COW;
-  } else {
+  did_decrease = try_decrease_ref((void*)pa);
+  if(did_decrease){
     // allocate a new page
     // copy the old page to the new page
     // install the new page to the pte
@@ -424,7 +416,11 @@ uvmcowfix(pagetable_t pagetable, uint64 va)
     }
     memmove(mem, (char*)pa, PGSIZE);
     *pte = PA2PTE(mem) | PTE_W|PTE_X|PTE_R|PTE_U | PTE_V;
-    decrease_ref((void*)pa);
+  } else {
+    // add write bit
+    *pte |= PTE_W;
+    // clear COW bit
+    *pte &= ~PTE_COW;
   }
   return 1;
 }
@@ -451,6 +447,11 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   uint64 n, va0, pa0;
 
   while(len > 0){
+    if(uvmiscow(pagetable, dstva)){
+      if(!uvmcowfix(pagetable, dstva)){
+        return -1;
+      }
+    }
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)

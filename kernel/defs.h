@@ -64,8 +64,7 @@ void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
 void            increase_ref(void *);
-void            decrease_ref(void *);
-int             getref(void *);
+int             try_decrease_ref(void *);
 
 // log.c
 void            initlog(int, struct superblock*);
