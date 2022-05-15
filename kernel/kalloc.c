@@ -31,14 +31,10 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  printf("initialize refcounts\n");
   // initialize to 1 since kfree in freerange will decrease them back to 0
   for(int i = 0; i < 32768; i++)
     refcounts[i] = 1;
-  printf("done\n");
-  printf("freerange\n");
   freerange(end, (void*)PHYSTOP);
-  printf("done\n");
 }
 
 void
@@ -46,10 +42,8 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  printf("p: %p refcounts: %p\n", p, refcounts);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
-  printf("p: %p\n", p);
 }
 
 // Free the page of physical memory pointed at by v,
