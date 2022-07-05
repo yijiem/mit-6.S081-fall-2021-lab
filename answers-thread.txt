@@ -1,0 +1,3 @@
+Multiple threads try to insert keys into a table at the same time. They could
+all try to update the head pointer of the table and results into e.g. last
+writer win.

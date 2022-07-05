@@ -12,6 +12,7 @@ struct barrier {
   pthread_cond_t barrier_cond;
   int nthread;      // Number of threads that have reached this round of the barrier
   int round;     // Barrier round
+  int leave_counter;
 } bstate;
 
 static void
@@ -20,6 +21,8 @@ barrier_init(void)
   assert(pthread_mutex_init(&bstate.barrier_mutex, NULL) == 0);
   assert(pthread_cond_init(&bstate.barrier_cond, NULL) == 0);
   bstate.nthread = 0;
+  bstate.round = 0;
+  bstate.leave_counter = 0;
 }
 
 static void 
@@ -30,7 +33,29 @@ barrier()
   // Block until all threads have called barrier() and
   // then increment bstate.round.
   //
-  
+  pthread_mutex_lock(&bstate.barrier_mutex);
+  while (bstate.leave_counter > 0) {
+    // Wait while the previous round of threads are leaving.
+    pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+  }
+
+  bstate.nthread++;
+  if (bstate.nthread == nthread) {
+    // last arriver broadcasts
+    pthread_cond_broadcast(&bstate.barrier_cond);
+    bstate.round++;
+  }
+  while (bstate.nthread < nthread) {
+    pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+  }
+  bstate.leave_counter++;
+  if (bstate.leave_counter == nthread) {
+    // last leaver resets and broadcasts in case threads race around the loop.
+    bstate.nthread = 0;
+    bstate.leave_counter = 0;
+    pthread_cond_broadcast(&bstate.barrier_cond);
+  }
+  pthread_mutex_unlock(&bstate.barrier_mutex);
 }
 
 static void *
