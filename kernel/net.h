@@ -1,6 +1,7 @@
 //
 // packet buffer management
 //
+#include <stddef.h>
 
 #define MBUF_SIZE              2048
 #define MBUF_DEFAULT_HEADROOM  128
@@ -29,6 +30,10 @@ char *mbuftrim(struct mbuf *m, unsigned int len);
 #define mbufpushhdr(mbuf, hdr) (typeof(hdr)*)mbufpush(mbuf, sizeof(hdr))
 #define mbufputhdr(mbuf, hdr) (typeof(hdr)*)mbufput(mbuf, sizeof(hdr))
 #define mbuftrimhdr(mbuf, hdr) (typeof(hdr)*)mbuftrim(mbuf, sizeof(hdr))
+
+#define container_of(ptr, type, member) ({ \
+    void *__mptr = (void *)(ptr);\
+    ((type *)(__mptr - offsetof(type, member))); })
 
 struct mbuf *mbufalloc(unsigned int headroom);
 void mbuffree(struct mbuf *m);

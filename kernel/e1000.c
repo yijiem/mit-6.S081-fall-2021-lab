@@ -16,10 +16,23 @@ static struct mbuf *tx_mbufs[TX_RING_SIZE];
 static struct rx_desc rx_ring[RX_RING_SIZE] __attribute__((aligned(16)));
 static struct mbuf *rx_mbufs[RX_RING_SIZE];
 
+#define PRINT_CPU_ID(prefix) do { \
+    push_off(); \
+    printf("%s: cpuid: %d\n", #prefix, cpuid()); \
+    pop_off(); \
+  } while(0)
+
 // remember where the e1000's registers live.
 static volatile uint32 *regs;
 
 struct spinlock e1000_lock;
+
+int safe_holding(struct spinlock *lk) {
+  push_off();
+  int hld = holding(lk);
+  pop_off();
+  return hld;
+}
 
 // called by pci_init().
 // xregs is the memory address at which the
@@ -102,7 +115,31 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  
+  // PRINT_CPU_ID(e1000_transmit);
+  int need_lock = !safe_holding(&e1000_lock);
+  if (need_lock) { acquire(&e1000_lock); }
+  uint32 next = regs[E1000_TDT];
+  if (!(tx_ring[next].status & E1000_TXD_STAT_DD)) {
+    if (need_lock) { release(&e1000_lock); }
+    printf("e1000_transmit: no descriptor available\n");
+    return -1;
+  }
+  if (tx_ring[next].addr) {
+    // TODO: figure out why container_of doesn't work
+    // char *head = (char *)tx_ring[next].addr;
+    // printf("TRACE: e1000_transmit:123\n");
+    // mbuffree(container_of(&head, struct mbuf, head));
+    mbuffree(tx_mbufs[next]);
+  }
+  tx_mbufs[next] = m;
+  tx_ring[next].addr = (uint64)m->head;
+  tx_ring[next].length = m->len;
+  tx_ring[next].cmd |= E1000_TXD_CMD_RS;
+  tx_ring[next].cmd |= E1000_TXD_CMD_EOP;
+  tx_ring[next].status &= ~E1000_TXD_STAT_DD;
+  regs[E1000_TDT] = (next + 1) % TX_RING_SIZE;
+
+  if (need_lock) { release(&e1000_lock); }
   return 0;
 }
 
@@ -115,6 +152,37 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  // PRINT_CPU_ID(e1000_recv);
+  int need_lock = !safe_holding(&e1000_lock);
+  if (need_lock) { acquire(&e1000_lock); }
+  while (1) {
+    uint32 next = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+    if (!(rx_ring[next].status & E1000_RXD_STAT_DD)) {
+      if (need_lock) { release(&e1000_lock); }
+      // printf("e1000_recv: DD bit not set, stop\n");
+      return;
+    }
+    if (!(rx_ring[next].status & E1000_RXD_STAT_EOP)) {
+      panic("e1000_recv: only support single descriptor packet");
+    }
+    // TODO: figure out why container_of doesn't work
+    // char *head = (char *)rx_ring[next].addr;
+    // struct mbuf* mb = container_of(&head, struct mbuf, head);
+    struct mbuf *mb = rx_mbufs[next];
+    mb->len = rx_ring[next].length;
+    // deliver!
+    net_rx(mb);
+    struct mbuf *new_mb = mbufalloc(0);
+    if (!new_mb) {
+      panic("e1000_recv: failed to allocate a new mbuf");
+    }
+    rx_mbufs[next] = new_mb;
+    rx_ring[next].addr = (uint64) new_mb->head;
+    rx_ring[next].status = 0;
+    // advance tail so that hardware can use the descriptor
+    regs[E1000_RDT] = next;
+  }
+  if (need_lock) { release(&e1000_lock); }
 }
 
 void
