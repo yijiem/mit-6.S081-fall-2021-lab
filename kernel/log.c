@@ -34,7 +34,7 @@
 // and to keep track in memory of logged block# before commit.
 struct logheader {
   int n;
-  int block[LOGSIZE];
+  int block[LOGSIZE];  // n <= LOGSIZE; n <= log.size; log.size == sb->nlog; LOGSIZE == 30;
 };
 
 struct log {
